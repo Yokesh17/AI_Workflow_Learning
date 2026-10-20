@@ -98,6 +98,49 @@ Schema validation (`RuleSchema`) automatically rejects any mismatched metrics (e
    - `questionsCount`, `difficulty`, `isGroup`, and `parentGroupId` stored and persisted in SQLite.
    - Browser refresh preserves your active editing path and view (`active_app_view` and `canvas_zoom` in `localStorage`).
 
+---
+
+## 💡 Assumptions & Engineering Tradeoffs
+
+This section outlines key technical and architectural decisions made during development to balance visual fidelity, data contract integrity, and modern AI agent integration:
+
+### 1. Backend Stack: Python (FastAPI + LangGraph) vs. Java (Spring Boot)
+* **Decision**: Adopted Python, FastAPI, and LangGraph with SQLite rather than Java / Spring Boot.
+* **Benefit**: Python offers native first-class support for **LangGraph**, **Pydantic v2**, and modern LLM toolkits (Groq / OpenAI SDKs). This enabled rapid, reliable modeling of multi-node agent state graphs (`find_outgoing` → `evaluate_rules` → `llm_reasoning`) with minimal boilerplate.
+* **Tradeoff Mitigation**: To match the architectural rigor expected of Java enterprise systems, strict Pydantic v2 schemas were implemented for all request and response bodies, validating Table 7 type constraints alongside 9 automated integration tests (`pytest`).
+
+### 2. Component Palette: Generic Curriculum Blocks vs. Static SAT Library
+* **Decision**: Replaced the domain-specific SAT mock library (`Math Module 1`, `Reading Module 2`, etc.) in the left panel with 5 clean, abstract building blocks: **Assessment Section**, **Adaptive Group**, **Learning Unit**, **START**, and **END**.
+* **Benefit**: The application acts as a universally applicable curriculum builder capable of modeling any educational subject, corporate onboarding, or diagnostic test rather than being locked to a single exam format.
+* **Tradeoff Mitigation**: The `/api/components` API endpoint was retained for contract compliance with `available-content.schema.json`, while giving designers full authoring freedom on the canvas.
+
+### 3. Simulation Architecture: Hybrid Engine (Deterministic Validation + LLM Agent)
+* **Decision**: Designed a dual-mode simulator:
+  1. *Targeted Step Simulation*: Allows step-by-step debugging of transitions, streamlined so START/END have zero redundant input sliders, Units only show duration/progress, and Assessments only show test scores.
+  2. *AI Whole-Workflow Review*: Audits the complete graph from START to END in one shot.
+* **Benefit**: External LLM APIs can encounter rate limits or latency. The graph auditor was designed as a **hybrid engine**: structural reachability (validating that START reaches END across all branches, detecting orphan nodes, and flagging dead ends) runs **deterministically with 0ms latency**, while Groq LLM enriches it with pedagogical critique and recommendations. If external APIs are unavailable, diagnostics still function seamlessly.
+
+### 4. Grouping Model: Graph Relationships & Popovers vs. Deeply Nested Sub-Flows
+* **Decision**: Utilized a directed relationship model (`isGroup: true`, `parentGroupId`, and directed edges) with a non-destructive temporary click popover instead of complex React Flow nested sub-canvases.
+* **Benefit**: Deeply nested sub-flows in canvas libraries often introduce coordinate calculation bugs, rigid bounding boxes, and drag collision issues. The relationship model achieves 100% visual fidelity to `AdaptiveLearningPathBuilder.png`, enables one-click conversions ("Convert Section to Group", "Add Section to Group"), and allows effortless regrouping via dropdown without breaking edge configurations.
+
+### 5. Strict Table 7 Metric Separation: Units vs. Assessments
+* **Decision**: Strictly bifurcated node configurations and properties panel fields based on pedagogical role:
+  * *Assessment Section*: Questions count, duration, max score, passing score criteria.
+  * *Learning Unit*: Duration alone; question count input is completely hidden.
+  * *Connection Rules*: Assessment edges only allow `score`, `score_range`, `passed`, and `completion`. Unit edges only allow `time_spent_minutes`, `percentage_completion`, and `completion`.
+* **Benefit**: Prevents curriculum designers from creating logically invalid conditions (e.g. attempting to score an instructional reading module), ensuring 100% compliance with Table 7.
+
+### 6. UX Polish: Custom React Modals vs. Browser-Native Alerts
+* **Decision**: Completely removed native `window.confirm()` and `alert()` calls in favor of an accessible, Tailwind-styled confirmation modal with backdrop blur (`backdrop-blur-xs`), path name confirmation, action buttons with loading spinners, and inline error banners.
+* **Benefit**: Delivers a polished, professional enterprise feel that matches the dark/light design system.
+
+### 7. State Persistence: Zustand + LocalStorage vs. Heavy Client Router
+* **Decision**: Persisted active path ID, view state (`dashboard` vs `builder`), and canvas zoom in `localStorage` managed via Zustand.
+* **Benefit**: Avoided the routing overhead and server-side fallback complexities of a full client router (like `react-router-dom`) while ensuring an uninterrupted editing experience across browser refreshes.
+
+---
+
 ## 🚀 Quick Start Guide
 
 ### 1. Backend Setup
